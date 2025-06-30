@@ -10,8 +10,8 @@ use crate::{
     set_apply, set_partial_eq, set_try_apply,
     utility::{reflect_hasher, GenericTypeInfoCell, GenericTypePathCell, NonGenericTypeInfoCell},
     ApplyError, Array, ArrayInfo, ArrayIter, DynamicMap, DynamicTypePath, FromReflect, FromType,
-    Generics, GetTypeRegistration, List, ListInfo, ListIter, Map, MapInfo, MapIter, MaybeTyped,
-    OpaqueInfo, PartialReflect, Reflect, ReflectCloneError, ReflectDeserialize, ReflectFromPtr,
+    Generics, GetTypeRegistration, List, ListInfo, ListIter, Map, MapInfo, MaybeTyped, OpaqueInfo,
+    PartialReflect, Reflect, ReflectCloneError, ReflectDeserialize, ReflectFromPtr,
     ReflectFromReflect, ReflectKind, ReflectMut, ReflectOwned, ReflectRef, ReflectSerialize, Set,
     SetInfo, TypeInfo, TypeParamInfo, TypePath, TypeRegistration, TypeRegistry, Typed,
 };
@@ -736,27 +736,15 @@ macro_rules! impl_reflect_for_hashmap {
                     .map(|value| value as &mut dyn PartialReflect)
             }
 
-            fn get_at(&self, index: usize) -> Option<(&dyn PartialReflect, &dyn PartialReflect)> {
-                self.iter()
-                    .nth(index)
-                    .map(|(key, value)| (key as &dyn PartialReflect, value as &dyn PartialReflect))
-            }
-
-            fn get_at_mut(
-                &mut self,
-                index: usize,
-            ) -> Option<(&dyn PartialReflect, &mut dyn PartialReflect)> {
-                self.iter_mut().nth(index).map(|(key, value)| {
-                    (key as &dyn PartialReflect, value as &mut dyn PartialReflect)
-                })
-            }
-
             fn len(&self) -> usize {
                 Self::len(self)
             }
 
-            fn iter(&self) -> MapIter {
-                MapIter::new(self)
+            fn iter(&self) -> Box<dyn Iterator<Item = (&dyn PartialReflect, &dyn PartialReflect)> + '_> {
+                Box::new(
+                    self.iter()
+                        .map(|(k, v)| (k as &dyn PartialReflect, v as &dyn PartialReflect)),
+                )
             }
 
             fn drain(&mut self) -> Vec<(Box<dyn PartialReflect>, Box<dyn PartialReflect>)> {
@@ -768,6 +756,10 @@ macro_rules! impl_reflect_for_hashmap {
                         )
                     })
                     .collect()
+            }
+
+            fn retain(&mut self, f: &mut dyn FnMut(&dyn PartialReflect, &mut dyn PartialReflect) -> bool) {
+                self.retain(move |k, v| f(k, v));
             }
 
             fn to_dynamic_map(&self) -> DynamicMap {
@@ -1043,6 +1035,10 @@ macro_rules! impl_reflect_for_hashset {
                     .collect()
             }
 
+            fn retain(&mut self, f: &mut dyn FnMut(&dyn PartialReflect) -> bool) {
+                self.retain(move |value| f(value));
+            }
+
             fn insert_boxed(&mut self, value: Box<dyn PartialReflect>) -> bool {
                 let value = V::take_from_reflect(value).unwrap_or_else(|value| {
                     panic!(
@@ -1282,27 +1278,15 @@ where
             .map(|value| value as &mut dyn PartialReflect)
     }
 
-    fn get_at(&self, index: usize) -> Option<(&dyn PartialReflect, &dyn PartialReflect)> {
-        self.iter()
-            .nth(index)
-            .map(|(key, value)| (key as &dyn PartialReflect, value as &dyn PartialReflect))
-    }
-
-    fn get_at_mut(
-        &mut self,
-        index: usize,
-    ) -> Option<(&dyn PartialReflect, &mut dyn PartialReflect)> {
-        self.iter_mut()
-            .nth(index)
-            .map(|(key, value)| (key as &dyn PartialReflect, value as &mut dyn PartialReflect))
-    }
-
     fn len(&self) -> usize {
         Self::len(self)
     }
 
-    fn iter(&self) -> MapIter {
-        MapIter::new(self)
+    fn iter(&self) -> Box<dyn Iterator<Item = (&dyn PartialReflect, &dyn PartialReflect)> + '_> {
+        Box::new(
+            self.iter()
+                .map(|(k, v)| (k as &dyn PartialReflect, v as &dyn PartialReflect)),
+        )
     }
 
     fn drain(&mut self) -> Vec<(Box<dyn PartialReflect>, Box<dyn PartialReflect>)> {
@@ -1317,6 +1301,10 @@ where
             ));
         }
         result
+    }
+
+    fn retain(&mut self, f: &mut dyn FnMut(&dyn PartialReflect, &mut dyn PartialReflect) -> bool) {
+        self.retain(move |k, v| f(k, v));
     }
 
     fn clone_dynamic(&self) -> DynamicMap {
